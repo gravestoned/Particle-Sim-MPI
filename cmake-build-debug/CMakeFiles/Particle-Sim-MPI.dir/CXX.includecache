@@ -1,0 +1,42 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/cygdrive/d/dev/Particle-Sim-MPI/src/common.cpp
+stdlib.h
+-
+stdio.h
+-
+assert.h
+-
+float.h
+-
+string.h
+-
+math.h
+-
+time.h
+-
+sys/time.h
+-
+random
+-
+common.h
+/cygdrive/d/dev/Particle-Sim-MPI/src/common.h
+
+/cygdrive/d/dev/Particle-Sim-MPI/src/common.h
+
+/cygdrive/d/dev/Particle-Sim-MPI/src/main.cpp
+mpi.h
+-
+cmath
+-
+vector
+-
+common.h
+/cygdrive/d/dev/Particle-Sim-MPI/src/common.h
+

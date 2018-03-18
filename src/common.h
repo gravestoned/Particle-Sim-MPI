@@ -23,6 +23,10 @@ typedef struct
   double ay;
 } particle_t;
 
+//
+//
+//
+
 typedef std::vector <particle_t *>  particle_vector_t;
 
 //

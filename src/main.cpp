@@ -3,10 +3,12 @@
 #include <vector>
 #include "common.h"
 
+
+
 //
 //  benchmarking program
 //
-void producer(int nof_proc, int nof_slices, int nof_particles, int * partition_sizes, FILE * fsave) {
+void producer(int nof_proc, int nof_slices, int nof_particles, int * partition_sizes, int * actual_partition_sizes, FILE * fsave) {
     MPI_Datatype PARTICLE;
     MPI_Type_contiguous(6, MPI_DOUBLE, &PARTICLE);
     MPI_Type_commit(&PARTICLE);
@@ -31,6 +33,7 @@ void producer(int nof_proc, int nof_slices, int nof_particles, int * partition_s
             slice_sizes[temp]++;
         }
         temp = 0;
+
         for (int i = 0; i < nof_proc; i++) {
 
             for (int j = 0; j < partition_sizes[i]; j++) {
@@ -38,29 +41,28 @@ void producer(int nof_proc, int nof_slices, int nof_particles, int * partition_s
                 int curr_slice = temp + j;
                 MPI_Send(&slice_sizes[curr_slice], 1, MPI_INT, i + 1, 0, MPI_COMM_WORLD);
                 for (particle_t *curr_particle : particle_matrix[curr_slice]) {
-                    MPI_Send(&(*curr_particle), 1, PARTICLE, i + 1, 0, MPI_COMM_WORLD);
+                    MPI_Send(curr_particle, 1, PARTICLE, i + 1, 0, MPI_COMM_WORLD);
                 }
             }
 
             temp += partition_sizes[i] - 2;
 
-            if (i != 0 && i != nof_proc - 1) {
+            if (i != 0 && i != nof_proc-1) {
                 temp--;
             }
+
         }
+
         if( fsave && (step%SAVEFREQ) == 0 )
             save( fsave, nof_particles, particles );
 
         temp = 0;
         for (int i = 0; i < nof_proc; i++) {
-            int len = 0;
-            MPI_Recv(&len, 1, MPI_INT, i + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            for (int j = 0; j < len; j++) {
+            for (int k = 0; k < actual_partition_sizes[i]; k++) {
                 MPI_Recv(&particles[temp], 1, PARTICLE, i + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 temp++;
             }
         }
-
 
     }
 
@@ -75,8 +77,8 @@ void consumer(int rank, int nof_proc, int partition){
     particle_vector_t * local_matrix = new particle_vector_t[partition];
     int * slice_sizes = new int[partition];
     particle_t curr_particle;
-    int start = (rank == 1) ? 0 : 1;
-    int end = (rank == nof_proc) ? partition : partition-1;
+    int start_slice = (rank == 1) ? 0 : 1;
+    int end_slice = (rank == nof_proc-1) ? partition : partition-1;
     int temp = 0;
 
 
@@ -101,7 +103,7 @@ void consumer(int rank, int nof_proc, int partition){
             temp += slice_sizes[i];
         }
 
-        for (int slice = start; slice < end; slice++) {
+        for (int slice = start_slice; slice < end_slice; slice++) {
             for (particle_t *curr_particle: local_matrix[slice]) {
                 (*curr_particle).ax = (*curr_particle).ay = 0;
 
@@ -113,20 +115,25 @@ void consumer(int rank, int nof_proc, int partition){
             }
         }
 
-        temp = 0;
 
-        for (int slice = start; slice < end; slice++) {
+        temp = 0;
+        for (int slice = start_slice; slice < end_slice; slice++) {
             temp += slice_sizes[slice];
         }
 
-        for (int i = start * slice_sizes[0]; i < temp; i++) {
+        int start_index = start_slice * slice_sizes[0];
+        int end_index = temp + start_index;
+
+
+        for (int i = start_index; i < end_index; i++) {
             move(local[i]);
         }
-        int total = temp - start * slice_sizes[0];
-        MPI_Send(&total, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
 
-        for (int i = start * slice_sizes[0]; i < temp; i++) {
-            MPI_Send(&local[i], 1, PARTICLE, 0, 0, MPI_COMM_WORLD);
+
+        for (int i = start_slice; i < end_slice; i++) {
+            for (int j = 0; j < slice_sizes[i]; j++) {
+                MPI_Send(local_matrix[i][j], 1, PARTICLE, 0, 0, MPI_COMM_WORLD);
+            }
         }
 
     }
@@ -135,8 +142,6 @@ void consumer(int rank, int nof_proc, int partition){
 
 int main( int argc, char **argv )
 {
-
-
     //
     //  process command line parameters
     //
@@ -150,10 +155,10 @@ int main( int argc, char **argv )
     }
 
     int n = read_int( argc, argv, "-n", 1000 );
-    char savename[2] = "t"; //read_string( argc, argv, "-o", NULL );
+    char * savename = read_string( argc, argv, "-o", NULL );
 
     //
-    //  set up MPI§
+    //  set up MPI
     //
     int n_proc, rank;
 
@@ -170,6 +175,7 @@ int main( int argc, char **argv )
     //
     //  set up the data partitioning across processors
     //
+
     int nof_slices = n / 10;
 
     n_proc--;
@@ -180,10 +186,15 @@ int main( int argc, char **argv )
         partition_offsets[i] = min( i * particle_per_proc, nof_slices );
 
     int *partition_sizes = (int*) malloc( n_proc * sizeof(int) );
+    int *actual_partition_sizes = (int*) malloc( n_proc * sizeof(int) );
     for( int i = 0; i < n_proc; i++ ) {
-        partition_sizes[i] = partition_offsets[i + 1] - partition_offsets[i] + 1;
-        if (i != 0 && i != n_proc-1) {
+        actual_partition_sizes[i] = partition_offsets[i + 1] - partition_offsets[i];
+        partition_sizes[i] = actual_partition_sizes[i];
+        if (n_proc > 1) {
             partition_sizes[i]++;
+            if (i != 0 && i != n_proc - 1) {
+                partition_sizes[i]++;
+            }
         }
     }
 
@@ -193,9 +204,11 @@ int main( int argc, char **argv )
     int nlocal = partition_sizes[rank-1];
 
     set_size(n);
+
     double simulation_time = read_timer( );
+
     if (rank == 0) {
-        producer(n_proc, nof_slices, n, partition_sizes, fsave);
+        producer(n_proc, nof_slices, n, partition_sizes, actual_partition_sizes, fsave);
     } else {
         consumer(rank, n_proc, nlocal);
     }
@@ -203,7 +216,7 @@ int main( int argc, char **argv )
 
     if( rank == 0 ) {
         simulation_time = read_timer() - simulation_time;
-        printf("n = %d, n_procs = %d, simulation time = %g s\n", n, n_proc, simulation_time);
+        printf("n = %d, n_procs = %d, simulation time = %g s\n", n, n_proc+1, simulation_time);
     }
 
     if( fsave )

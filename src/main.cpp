@@ -8,7 +8,7 @@
 //
 //  benchmarking program
 //
-void producer(int nof_proc, int nof_slices, int nof_particles, int * partition_sizes, int * actual_partition_sizes, FILE * fsave) {
+void master(int nof_proc, int nof_slices, int nof_particles, int *partition_sizes, int *actual_partition_sizes, FILE *fsave) {
     MPI_Datatype PARTICLE;
     MPI_Type_contiguous(6, MPI_DOUBLE, &PARTICLE);
     MPI_Type_commit(&PARTICLE);
@@ -68,7 +68,7 @@ void producer(int nof_proc, int nof_slices, int nof_particles, int * partition_s
 
 }
 
-void consumer(int rank, int nof_proc, int partition){
+void worker(int rank, int nof_proc, int partition){
     MPI_Datatype PARTICLE;
     MPI_Type_contiguous( 6, MPI_DOUBLE, &PARTICLE );
     MPI_Type_commit( &PARTICLE );
